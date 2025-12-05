@@ -39,3 +39,10 @@ This project demonstrates how to manage BIM files (`.bim` / dotBIM format) direc
    `npm install`
 4. Start the development server:
    `npm run dev`
+
+## 🔗 Credits & Acknowledgements
+
+This project is built upon the **dotbim** file format specification.
+Special thanks to the original creator for providing a lightweight, developer-friendly BIM geometry standard.
+
+- **Original Specification:** [dotbim](https://github.com/paireks/dotbim) by [paireks](https://github.com/paireks)
