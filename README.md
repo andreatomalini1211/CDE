@@ -1,37 +1,41 @@
 # 🏗️ React BIM CDE (Headless ACDAT)
 
-Un Ambiente di Condivisione Dati (ACDAT/CDE) sperimentale basato su **React**, **Three.js** e **GitHub API**.
-Questo progetto dimostra come gestire file BIM (formato `.bim` / dotBIM) direttamente via web, utilizzando GitHub come backend per il versionamento e lo storage, eliminando la necessità di database complessi.
+An experimental Common Data Environment (CDE) based on **React**, **Three.js**, and the **GitHub API**.
+This project demonstrates how to manage BIM files (`.bim` / dotBIM format) directly via the web, using GitHub as a backend for versioning and storage, eliminating the need for complex databases.
 
-## ✨ Funzionalità Principali
+## ✨ Key Features
 
-### 👁️ Visualizzazione & Navigazione
-- **Motore 3D:** Rendering fluido di geometrie BIM tramite `@react-three/fiber`.
-- **Controlli Camera:** Navigazione Orbitale, Fit View e Viste Ortogonali (Top, Front, Left, Right).
-- **Esplora Risorse:** Navigazione tra repository e cartelle GitHub private.
+### 👁️ Visualization & Navigation
+- **3D Engine:** Fluid rendering of BIM geometries via `@react-three/fiber`.
+- **Camera Controls:** Orbital navigation, Fit View, and Orthographic Views (Top, Front, Left, Right).
+- **Resource Explorer:** Navigate through private GitHub repositories and folders.
 
-### 🛠️ Gestione Dati BIM
-- **Filtri Disciplina:** Toggle rapido per elementi ARC, STR, MEP.
-- **Gestione Layer:** Visibilità per categorie (es. Muri, Finestre) con pannello dedicato.
-- **Nascondi Elemento:** Possibilità di isolare o nascondere singoli oggetti GUID.
+### 🛠️ BIM Data Management
+- **Discipline Filters:** Quick toggles for ARC, STR, MEP elements.
+- **Layer Management:** Visibility control by category (e.g., Walls, Windows) with a dedicated panel.
+- **Hide Element:** Ability to isolate or hide specific objects by GUID.
 
-### 💬 Collaborazione
-- **Annotazioni:** Aggiunta di commenti testuali legati al GUID dell'oggetto.
-- **Identità Utente:** I commenti registrano automaticamente Autore (GitHub User) e Timestamp.
-- **Salvataggio Cloud:** I dati vengono scritti direttamente nel JSON su GitHub tramite commit automatici.
+### 💬 Collaboration
+- **Annotations:** Add text comments linked to the object's GUID.
+- **User Identity:** Comments automatically record the Author (GitHub User) and Timestamp.
+- **Cloud Saving:** Data is written directly to the JSON on GitHub via automatic commits.
 
-### 🕒 Time Machine (Cronologia)
-- **Storico Versioni:** Navigazione tra i commit passati del file.
-- **Read-Only Mode:** Blocco automatico delle modifiche quando si visualizzano versioni storiche per garantire l'integrità dei dati.
+### 🕒 Time Machine (History)
+- **Version History:** Navigate through past file commits.
+- **Read-Only Mode:** Automatic editing block when viewing historical versions to ensure data integrity.
 
-## 🚀 Installazione e Avvio
+## 🚀 Installation and Setup
 
-### Prerequisiti
-- Node.js installato.
-- Un Personal Access Token (PAT) di GitHub con permessi `repo`.
+### Prerequisites
+- Node.js installed.
+- A GitHub Personal Access Token (PAT) with `repo` permissions.
 
 ### Setup
-1. Clona la repository o scarica la cartella.
-2. Crea un file `.env` nella root del progetto:
+1. Clone the repository or download the folder.
+2. Create a `.env` file in the project root:
    ```bash
-   VITE_GITHUB_TOKEN=il_tuo_token_github_qui
+   VITE_GITHUB_TOKEN=your_github_token_here
+3. Install dependencies:
+   `npm install`
+4. Start the development server:
+   `npm run dev`
