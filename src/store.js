@@ -9,6 +9,15 @@ import { create } from 'zustand';
 import { Octokit } from '@octokit/rest';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+// CRITICAL ARCHITECTURE NOTE:
+// This project uses a "Hyper-Specific" dependency pair to avoid WASM LinkErrors:
+// 1. web-ifc-three: v0.0.126 (The loader)
+// 2. web-ifc: v0.0.39 (The WASM binary)
+//
+// DO NOT UPGRADE THESE PACKAGES INDEPENDENTLY.
+// Checks: npm list web-ifc web-ifc-three
+import { IFCLoader } from 'web-ifc-three/IFCLoader';
+import * as THREE from 'three';
 
 export const useStore = create((set, get) => ({
     // -------------------------------------------------------------------------
@@ -90,18 +99,30 @@ export const useStore = create((set, get) => ({
 
         try {
             const octokit = new Octokit({ auth: token });
-
-            // 1. Fetch Blob (upto 100MB)
             const response = await octokit.rest.git.getBlob({
                 owner: repo.owner,
                 repo: repo.name,
                 file_sha: fileItem.sha,
             });
 
-            // 2. Decode
             const base64Content = response.data.content;
-            const decodedString = atob(base64Content.replace(/\s/g, ''));
-            const finalJson = JSON.parse(decodedString);
+            const isIfc = fileItem.name.toLowerCase().endsWith('.ifc');
+            let finalJson = null;
+
+            if (isIfc) {
+                // Decode to ArrayBuffer for web-ifc
+                const binaryString = atob(base64Content.replace(/\s/g, ''));
+                const len = binaryString.length;
+                const buffer = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    buffer[i] = binaryString.charCodeAt(i);
+                }
+                finalJson = await get()._processIFC(buffer, fileItem.name);
+            } else {
+                // Decode to String for dotBIM
+                const decodedString = atob(base64Content.replace(/\s/g, ''));
+                finalJson = JSON.parse(decodedString);
+            }
 
             if (finalJson && finalJson.meshes) {
                 // 3. Process Disciplines (Aggregation)
@@ -112,7 +133,6 @@ export const useStore = create((set, get) => ({
                     let disc = 'UNKNOWN';
                     if (el.info) {
                         const keys = Object.keys(el.info);
-                        // Try typical keys: Disciplina, Discipline, Sector, Category
                         const discKey = keys.find(k => ['disciplina', 'discipline', 'sector', 'category'].includes(k.toLowerCase()));
                         if (discKey) {
                             disc = String(el.info[discKey]).trim().toUpperCase();
@@ -150,7 +170,169 @@ export const useStore = create((set, get) => ({
                 });
 
             } else { alert("File parsed but seems invalid (no meshes)."); }
-        } catch (error) { console.error(error); alert("Failed to load file."); }
+        } catch (error) { console.error(error); alert("Failed to load file: " + error.message); }
+    },
+
+    _processIFC: async (buffer, fileName) => {
+        console.log(`Starting IFC normalization for ${fileName}...`);
+        const ifcLoader = new IFCLoader();
+        // ARCHITECTURE DECISION: Locally Served WASM
+        // We serve the WASM binary from `/public/web-ifc.wasm` (copied via setup-wasm.js).
+        // This guarantees the binary matches the installed node_module exactly.
+        ifcLoader.ifcManager.setWasmPath('/');
+
+        const modelMesh = await ifcLoader.parse(buffer.buffer);
+        if (modelMesh.geometry) {
+            modelMesh.geometry.computeBoundingBox();
+        }
+        let center = { x: 0, y: 0, z: 0 };
+        if (modelMesh.geometry && modelMesh.geometry.boundingBox) {
+            const c = new THREE.Vector3();
+            modelMesh.geometry.boundingBox.getCenter(c);
+            center = { x: c.x, y: c.y, z: c.z };
+            console.log("Centering model at:", center);
+        }
+
+        const modelID = modelMesh.modelID;
+        const ifcManager = ifcLoader.ifcManager;
+
+        const meshes = [];
+        const elements = [];
+
+        // Helper: Traverse spatial structure to find elements
+        const structure = await ifcManager.getSpatialStructure(modelID);
+        const productIDs = [];
+
+        const traverse = (node) => {
+            if (node.children && node.children.length > 0) {
+                node.children.forEach(child => traverse(child));
+            }
+            // Leaf nodes in spatial tree are likely products
+            // We can also check type, but simpler to try/catch subset generation
+            productIDs.push(node.expressID);
+        };
+        traverse(structure);
+
+        const uniqueIDs = [...new Set(productIDs)];
+        console.log(`Found ${uniqueIDs.length} potential nodes in spatial structure.`);
+
+        let processedCount = 0;
+
+        for (const id of uniqueIDs) {
+            try {
+                // Ignore negative IDs or weird ones
+                if (id < 0) continue;
+
+                const props = await ifcManager.getItemProperties(modelID, id);
+
+                // Create subset to get geometry
+                const subset = ifcManager.createSubset({
+                    modelID,
+                    ids: [id],
+                    removePrevious: true,
+                    customID: 'tempSubset'
+                });
+
+                if (subset && subset.geometry && subset.geometry.attributes.position) {
+                    const geo = subset.geometry;
+                    const pos = geo.attributes.position.array;
+                    const idx = geo.index ? geo.index.array : null;
+
+                    if (pos.length > 0) {
+                        const meshId = `ifc_mesh_${id}`;
+
+                        // GEOMETRY FIX 2: PRECISION (Jitter)
+                        // IFC models often have large coordinates (Georeferencing).
+                        // WebGL floats lose precision far from (0,0,0).
+                        // We subtract the global center from every vertex to move it to origin.
+                        // Apply Centering: Subtract center from each vertex
+                        const centeredPos = new Float32Array(pos.length);
+                        for (let k = 0; k < pos.length; k += 3) {
+                            centeredPos[k] = pos[k] - center.x;
+                            centeredPos[k + 1] = pos[k + 1] - center.y;
+                            centeredPos[k + 2] = pos[k + 2] - center.z;
+                        }
+
+                        // Push mesh
+                        meshes.push({
+                            mesh_id: meshId,
+                            coordinates: Array.from(centeredPos),
+                            indices: idx ? Array.from(idx) : []
+                        });
+
+                        // Fetch Psets (Simplification: just basic props for now to save time, unless crucial)
+                        // User requirement: "Extract its properties (Name, GlobalId, Property Sets)"
+                        // Getting Psets is slow. We will do it.
+                        // However, we must be careful not to crash.
+
+                        const flatInfo = {};
+                        if (props.Name) flatInfo.Name = props.Name.value;
+                        if (props.GlobalId) flatInfo.GlobalId = props.GlobalId.value;
+                        if (props.ObjectType) flatInfo.ObjectType = props.ObjectType.value;
+
+                        // Attempt to get Psets
+                        try {
+                            const psets = await ifcManager.getPropertySets(modelID, id, false);
+                            for (const ps of psets) {
+                                const psetProps = await ifcManager.getItemProperties(modelID, ps.expressID);
+                                if (psetProps.HasProperties) {
+                                    for (const propRef of psetProps.HasProperties) {
+                                        const propVal = await ifcManager.getItemProperties(modelID, propRef.value);
+                                        if (propVal && propVal.Name && propVal.NominalValue) {
+                                            let val = propVal.NominalValue.value;
+                                            // Handle IfcLabel vs IfcReal etc
+                                            if (typeof val === 'object') val = val.value || JSON.stringify(val);
+                                            flatInfo[propVal.Name.value] = val;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            console.warn("Failed to load Psets for", id);
+                        }
+
+                        const cleanInfo = {};
+                        Object.keys(flatInfo).forEach(k => {
+                            let v = flatInfo[k];
+                            // ensure string/number
+                            if (v !== null && v !== undefined) cleanInfo[k] = String(v);
+                        });
+
+                        // Push Element
+                        elements.push({
+                            mesh_id: meshId,
+                            vector: { x: 0, y: 0, z: 0 },
+                            // GEOMETRY FIX 1: ORIENTATION
+                            // IFC is Z-Up. Three.js is Y-Up.
+                            // We apply a +90 degree rotation around X-axis (Quaternion) to stand it up.
+                            // Quaternion for X+90: qx = 0.70710678, qy = 0, qz = 0, qw = 0.70710678
+                            rotation: { qx: 0.70710678, qy: 0, qz: 0, qw: 0.70710678 },
+                            guid: props.GlobalId?.value || String(id),
+                            type: props.ObjectType?.value || 'IfcElement',
+                            info: cleanInfo,
+                            color: { r: 200, g: 200, b: 200, a: 255 }
+                        });
+                        processedCount++;
+                    }
+                }
+            } catch (ignore) {
+                // console.log("Skipping", id);
+            }
+        }
+
+        console.log(`Normalized ${processedCount} IFC elements.`);
+
+        // Cleanup
+        // ifcManager.dispose() // might kill the wasm, safe to leave? 
+        // For now, we leave it. Or remove specific model `ifcManager.close(modelID)`?
+        try { ifcManager.close(modelID); } catch (e) { }
+
+        return {
+            schema_version: '1.0.0',
+            meshes: meshes,
+            elements: elements,
+            info: { comments: [] }
+        };
     },
 
     removeModel: (id) => set(state => ({
@@ -210,7 +392,7 @@ export const useStore = create((set, get) => ({
             })).filter(i => {
                 if (i.type === 'dir') return true;
                 const ext = i.name.split('.').pop().toLowerCase();
-                return ['bim', 'png', 'jpg', 'txt', 'md', 'json'].includes(ext);
+                return ['bim', 'ifc', 'png', 'jpg', 'txt', 'md', 'json'].includes(ext);
             });
             filtered.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1));
             set({ navItems: filtered, currentPath: path });

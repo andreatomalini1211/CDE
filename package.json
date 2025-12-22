@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "postinstall": "node setup-wasm.js",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -21,7 +22,10 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwind-merge": "^3.4.0",
-    "three": "^0.181.2",
+    "three": "^0.182.0",
+    "three-stdlib": "^2.36.1",
+    "web-ifc": "^0.0.39",
+    "web-ifc-three": "^0.0.126",
     "zustand": "^5.0.9"
   },
   "devDependencies": {

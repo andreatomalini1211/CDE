@@ -90,8 +90,11 @@ export default function Interface() {
         }
         const ext = item.name.split('.').pop().toLowerCase();
 
-        // 1. BIM Files: Load & Append
-        if (ext === 'bim') {
+        // HYBRID LOADING LOGIC:
+        // 1. .bim -> Loaded as JSON (Fast, Lightweight)
+        // 2. .ifc -> Loaded via WASM (Heavy, Standard)
+        // Both flow into the same 'loadAndAppendModel' store action.
+        if (ext === 'bim' || ext === 'ifc') {
             loadAndAppendModel(item);
             return;
         }
