@@ -117,4 +117,4 @@ Feel free to reach out for research collaborations or technical discussions.
 * **LinkedIn:** [Andrea Tomalini](https://www.linkedin.com/in/andrea-tomalini/)
 * **ResearchGate:** [Profile](https://www.researchgate.net/profile/Andrea-Tomalini?ev=hdr_xprf)
 * **Instagram:** [@andrea_tomalini](https://www.instagram.com/andrea_tomalini/)
-* **Email:** [andreatomalini@gmail.com](mailto:andreatomalini@gmail.com)
+* **Email:** [andreatomalini@gmail.com](mailto:andreatomalini@gmail.com; [andrea.tomalini@polito.it](mailto:andrea.tomalini@polito.it)
