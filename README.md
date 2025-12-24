@@ -4,6 +4,14 @@ An experimental **Common Data Environment (CDE)** and **BIM Viewer** developed t
 
 This project demonstrates a "Headless" approach to BIM data management: instead of relying on proprietary servers or complex SQL databases, it utilizes **GitHub** as a distributed, versioned backend. The application runs entirely client-side, leveraging the user's browser for 3D computation and the GitHub API for data persistence.
 
+## 🌐 Live Demo / Testing
+
+You can test the latest deployment of this prototype directly in your browser without any local installation:
+
+👉 **[Launch Application (Vercel)](https://cde-gtr1q9uh1-andrea-tomalinis-projects.vercel.app)**
+
+*Note: Since this is a serverless BYOT (Bring Your Own Token) application, you will still need to input your GitHub Personal Access Token to authenticate and access your repositories.*
+
 ## 🧠 Methodology: Antigravity & Vibe Coding
 
 This software was developed using an **AI-Assisted "Vibe Coding" methodology**.
