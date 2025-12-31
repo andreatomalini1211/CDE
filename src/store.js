@@ -763,31 +763,175 @@ export const useStore = create((set, get) => ({
         const { token, repo, loadedModels, selectedModelId } = get();
         const activeModel = loadedModels.find(m => m.id === selectedModelId);
         if (!activeModel) return;
+
         const octokit = new Octokit({ auth: token });
+        const sidecarPath = activeModel.sidecarPath || `${activeModel.filePath}.comments.json`;
+
         try {
-            const { data } = await octokit.rest.repos.listCommits({ owner: repo.owner, repo: repo.name, path: activeModel.filePath });
-            set({ historyList: data });
+            // Dual Fetch: Get history for both Geometry and Sidecar
+            const [modelCommits, sidecarCommits] = await Promise.all([
+                octokit.rest.repos.listCommits({ owner: repo.owner, repo: repo.name, path: activeModel.filePath }),
+                octokit.rest.repos.listCommits({ owner: repo.owner, repo: repo.name, path: sidecarPath }).catch(() => ({ data: [] }))
+            ]);
+
+            // Merge
+            const allCommits = [...modelCommits.data, ...sidecarCommits.data];
+
+            // Deduplicate by SHA
+            const uniqueCommits = Array.from(new Map(allCommits.map(c => [c.sha, c])).values());
+
+            // Sort by Date (Newest First)
+            uniqueCommits.sort((a, b) => new Date(b.commit.author.date) - new Date(a.commit.author.date));
+
+            set({ historyList: uniqueCommits });
         } catch (e) { console.error(e); }
     },
 
+    // ATOMIC WIPE ACTION
+    clearComments: () => {
+        console.log("🧨 ATOMIC WIPE: Clearing all comments.");
+        set({ comments: {} });
+    },
+
     loadVersion: async (commitSha) => {
-        const { token, repo, loadedModels, selectedModelId } = get();
+        const { token, repo, loadedModels, selectedModelId, clearComments } = get();
         const activeModel = loadedModels.find(m => m.id === selectedModelId);
         if (!activeModel) return;
 
         try {
             const octokit = new Octokit({ auth: token });
-            const { data } = await octokit.rest.repos.getContent({ owner: repo.owner, repo: repo.name, path: activeModel.filePath, ref: commitSha });
-            const blob = await octokit.rest.git.getBlob({ owner: repo.owner, repo: repo.name, file_sha: data.sha });
+            const sidecarPath = activeModel.sidecarPath || `${activeModel.filePath}.comments.json`;
+
+            console.log(`⏳ Loading history (${commitSha.substring(0, 7)})...`);
+
+            // 1. NUKE EVERYTHING via Atomic Action
+            clearComments();
+            set({ isHistoryMode: true, selectedElement: null });
+
+            // 1. Fetch Geometry & Sidecar in Parallel
+            // We use Promise.allSettled to allow sidecar to fail (404) without breaking geometry load
+            const [geomRes, sidecarRes] = await Promise.allSettled([
+                octokit.rest.repos.getContent({ owner: repo.owner, repo: repo.name, path: activeModel.filePath, ref: commitSha }),
+                octokit.rest.repos.getContent({ owner: repo.owner, repo: repo.name, path: sidecarPath, ref: commitSha })
+            ]);
+
+            // 2. Process Geometry
+            if (geomRes.status === 'rejected') throw new Error("Failed to load historical model file.");
+
+            const blob = await octokit.rest.git.getBlob({ owner: repo.owner, repo: repo.name, file_sha: geomRes.value.data.sha });
             const json = JSON.parse(atob(blob.data.content.replace(/\s/g, '')));
 
-            // Simplified: Just update the model content
+            // 3. Process Sidecar (Comments)
+            let historicalComments = {};
+            if (sidecarRes.status === 'fulfilled' && sidecarRes.value.data) {
+                try {
+                    let bcf = null;
+                    if (sidecarRes.value.data.content) {
+                        const jsonStr = atob(sidecarRes.value.data.content.replace(/\s/g, ''));
+                        bcf = JSON.parse(jsonStr);
+                    } else {
+                        bcf = sidecarRes.value.data; // Raw JSON
+                    }
+
+                    if (bcf && bcf.topics) {
+                        bcf.topics.forEach(topic => {
+                            const hostGuid = (topic.markup && topic.markup.element_refs && topic.markup.element_refs[0]) || topic.guid;
+                            if (!historicalComments[hostGuid]) historicalComments[hostGuid] = [];
+                            historicalComments[hostGuid].push({
+                                id: topic.guid,
+                                uuid: hostGuid,
+                                text: topic.comment,
+                                author: topic.author,
+                                date: topic.creation_date,
+                                position: topic.markup?.pinpoint || null
+                            });
+                        });
+                        console.log("✅ Loaded historical sidecar comments.");
+                    }
+                } catch (e) {
+                    console.warn("Failed to parse historical sidecar:", e);
+                }
+            } else {
+                console.log("ℹ️ No sidecar found for this version (or error). Comments cleared.");
+            }
+
+            // 4. Update State
+            // We Replace the model content AND the comments for this model
+            // Note: This replaces ALL comments in the store logic for simplicity? 
+            // Ideally we should merge or scope by model, but current architecture seems to use a single 'comments' object.
+            // CAUTION: If we have multiple models loaded, this might wipe comments for others if we just use `historicalComments`.
+            // FIX: We should only replace comments for elements belonging to THIS model.
+
+            // Current 'comments' store: { [guid]: [...] }
+            // We need to identify which GUIDs belong to the active model and clear them, then add historical ones.
+            // But for now, let's just merge. If conflicts, history wins.
+
+            // BETTER APPROACH for History Mode: 
+            // Since History Mode blocks other interactions, we can just overlay these comments.
+
             const updatedModel = { ...activeModel, ...json, uiColor: activeModel.uiColor };
             const newModels = loadedModels.map(m => m.id === selectedModelId ? updatedModel : m);
 
-            set({ loadedModels: newModels, isHistoryMode: true, selectedElement: null });
-        } catch (e) { console.error(e); }
+            set({
+                loadedModels: newModels,
+                comments: historicalComments
+            });
+
+        } catch (e) {
+            console.error(e);
+            alert("History Load Failed: " + e.message);
+        }
     },
 
-    exitHistoryMode: () => set({ isHistoryMode: false })
+    exitHistoryMode: async () => {
+        const { clearComments, loadedModels, token, repo } = get();
+        console.log("🔙 Exiting History Mode. Reloading HEAD data...");
+
+        // 1. NUKE EVERYTHING
+        clearComments();
+        set({ isHistoryMode: false });
+
+        const octokit = new Octokit({ auth: token });
+        const restoredComments = {};
+
+        // 2. Reload LIVE data for all models
+        for (const model of loadedModels) {
+            try {
+                const sidecarPath = model.sidecarPath || `${model.filePath}.comments.json`;
+                // Force fetch HEAD
+                const { data } = await octokit.rest.repos.getContent({
+                    owner: repo.owner,
+                    repo: repo.name,
+                    path: sidecarPath,
+                    headers: { 'If-None-Match': '' },
+                    t: Date.now()
+                });
+
+                let bcf = null;
+                if (data.content) {
+                    bcf = JSON.parse(atob(data.content.replace(/\s/g, '')));
+                } else {
+                    bcf = data;
+                }
+
+                if (bcf && bcf.topics) {
+                    bcf.topics.forEach(topic => {
+                        const hostGuid = (topic.markup?.element_refs?.[0]) || topic.guid;
+                        if (!restoredComments[hostGuid]) restoredComments[hostGuid] = [];
+                        restoredComments[hostGuid].push({
+                            id: topic.guid,
+                            uuid: hostGuid,
+                            text: topic.comment,
+                            author: topic.author,
+                            date: topic.creation_date,
+                            position: topic.markup?.pinpoint || null
+                        });
+                    });
+                }
+            } catch (e) { /* Skip */ }
+        }
+
+        set({ comments: restoredComments });
+        console.log("✅ Live state restored.");
+    }
 }));

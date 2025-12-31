@@ -8,7 +8,7 @@ This project demonstrates a "Headless" approach to BIM data management: instead 
 
 You can test the latest deployment of this prototype directly in your browser without any local installation:
 
-👉 **[Launch Application (Vercel)](https://cde-gtr1q9uh1-andrea-tomalinis-projects.vercel.app)**
+👉 **[Launch Application (Vercel)](https://cde-delta.vercel.app/)**
 
 *Note: Since this is a serverless BYOT (Bring Your Own Token) application, you will still need to input your GitHub Personal Access Token to authenticate and access your repositories.*
 
