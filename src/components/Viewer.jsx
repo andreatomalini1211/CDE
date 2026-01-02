@@ -75,7 +75,14 @@ function PinMarkers() {
             if (thread && thread.length > 0) {
                 thread.forEach(c => {
                     if (c.position) {
-                        pins.push({ id: c.id, pos: c.position, color: 'red' });
+                        let color = '#FFFF00'; // Info (Yellow)
+                        switch (c.priority) {
+                            case 'High': color = '#800020'; break; // Bordeaux
+                            case 'Medium': color = '#FF0000'; break; // Red
+                            case 'Low': color = '#FFA500'; break; // Orange
+                            default: break;
+                        }
+                        pins.push({ id: c.id, pos: c.position, color });
                     }
                 });
             }
@@ -135,6 +142,20 @@ function CameraController() {
         switch (view) {
             case 'FIT':
                 // Stage component handles the initial fit.
+                break;
+            case 'FLY_TO':
+                if (cameraViewRequest.target && cameraViewRequest.cameraPosition) {
+                    controls.object.position.set(
+                        cameraViewRequest.cameraPosition.x,
+                        cameraViewRequest.cameraPosition.y,
+                        cameraViewRequest.cameraPosition.z
+                    );
+                    controls.target.set(
+                        cameraViewRequest.target.x,
+                        cameraViewRequest.target.y,
+                        cameraViewRequest.target.z
+                    );
+                }
                 break;
             case 'TOP':
                 controls.object.position.set(0, distance, 0);

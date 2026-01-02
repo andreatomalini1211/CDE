@@ -14,8 +14,9 @@ import {
     MessageSquare, Trash2, Eye, EyeOff, Loader2, Lightbulb, LightbulbOff, Maximize,
     History, RotateCcw, AlertTriangle, Send, Search, FileText, Download,
     Palette, ChevronDown, ChevronRight, LogOut, CheckSquare,
-    ArrowDown, ArrowLeft, ArrowRight
+    ArrowDown, ArrowLeft, ArrowRight, LayoutDashboard, Flag
 } from 'lucide-react';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import FilePreviewModal from './FilePreviewModal';
@@ -45,13 +46,15 @@ export default function Interface() {
         searchQuery, setSearchQuery, downloadBCFZip, uploadFileCorrect,
         showAllElements, isolateCommentedElements,
         availableDisciplines,
-        pendingPin, setPendingPin
+        pendingPin, setPendingPin,
+        flyToComment
     } = useStore();
 
     const [inputToken, setInputToken] = useState(token);
     const [loading, setLoading] = useState(false);
     const [previewFile, setPreviewFile] = useState(null);
     const [commentInput, setCommentInput] = useState("");
+    const [priority, setPriority] = useState('Low');
     const [activeTab, setActiveTab] = useState('PROPS');
 
     // Sidebar Collapsible State for Models
@@ -393,10 +396,13 @@ export default function Interface() {
                     {/* 2. TABS */}
                     <div className="flex border-b flex-shrink-0 bg-zinc-50">
                         <button onClick={() => setActiveTab('PROPS')} className={cn("flex-1 py-3 text-xs font-bold uppercase flex justify-center gap-2", activeTab === 'PROPS' ? "border-b-2 border-indigo-600 text-indigo-700 bg-white" : "text-zinc-400 hover:bg-zinc-100")}>
-                            <Info className="w-3.5 h-3.5" /> Properties
+                            <Info className="w-3.5 h-3.5" /> Props
+                        </button>
+                        <button onClick={() => setActiveTab('DASHBOARD')} className={cn("flex-1 py-3 text-xs font-bold uppercase flex justify-center gap-2", activeTab === 'DASHBOARD' ? "border-b-2 border-indigo-600 text-indigo-700 bg-white" : "text-zinc-400 hover:bg-zinc-100")}>
+                            <LayoutDashboard className="w-3.5 h-3.5" /> Dash
                         </button>
                         <button onClick={() => { setActiveTab('HIST'); fetchHistory(); }} className={cn("flex-1 py-3 text-xs font-bold uppercase flex justify-center gap-2", activeTab === 'HIST' ? "border-b-2 border-indigo-600 text-indigo-700 bg-white" : "text-zinc-400 hover:bg-zinc-100")}>
-                            <History className="w-3.5 h-3.5" /> History
+                            <History className="w-3.5 h-3.5" /> Hist
                         </button>
                     </div>
 
@@ -472,6 +478,16 @@ export default function Interface() {
                                         )}
 
                                         <div className="flex gap-2">
+                                            <select
+                                                value={priority}
+                                                onChange={e => setPriority(e.target.value)}
+                                                className="border text-xs p-1 rounded bg-zinc-50 text-zinc-700 outline-none"
+                                            >
+                                                <option value="High">High</option>
+                                                <option value="Medium">Med</option>
+                                                <option value="Low">Low</option>
+                                                <option value="Info">Info</option>
+                                            </select>
                                             <input
                                                 className="flex-1 border text-xs p-2 rounded"
                                                 placeholder="Reply..."
@@ -479,9 +495,9 @@ export default function Interface() {
                                                 onChange={e => setCommentInput(e.target.value)}
                                                 onKeyDown={e => {
                                                     if (e.key === 'Enter' && commentInput) {
-                                                        addComment(selectedElement.guid, commentInput, pendingPin);
+                                                        addComment(selectedElement.guid, commentInput, pendingPin, priority);
                                                         setCommentInput("");
-                                                        setPendingPin(null); // Clear pin after send
+                                                        setPendingPin(null);
                                                     }
                                                 }}
                                                 disabled={isHistoryMode}
@@ -490,9 +506,9 @@ export default function Interface() {
                                                 className="bg-zinc-800 text-white px-3 rounded hover:bg-black"
                                                 onClick={() => {
                                                     if (commentInput) {
-                                                        addComment(selectedElement.guid, commentInput, pendingPin);
+                                                        addComment(selectedElement.guid, commentInput, pendingPin, priority);
                                                         setCommentInput("");
-                                                        setPendingPin(null); // Clear pin after send
+                                                        setPendingPin(null);
                                                     }
                                                 }}
                                                 disabled={isHistoryMode}
@@ -539,6 +555,146 @@ export default function Interface() {
                                     Select a model or element<br />to view details.
                                 </div>
                             )
+                        )}
+
+                        {/* DASHBOARD TAB */}
+                        {activeTab === 'DASHBOARD' && (
+                            <div className="p-4 space-y-4">
+                                {!selectedModelId ? (
+                                    <div className="text-center py-10 text-zinc-400 text-xs">Select a model to view analytics.</div>
+                                ) : (
+                                    (() => {
+                                        // 1. Gather Data
+                                        const model = loadedModels.find(m => m.id === selectedModelId);
+                                        const modelGuids = new Set(model?.elements?.map(e => e.guid) || []);
+
+                                        const allThreads = Object.values(comments);
+                                        const dashboardIssues = [];
+
+                                        allThreads.forEach(thread => {
+                                            thread.forEach(c => {
+                                                if (modelGuids.has(c.uuid)) {
+                                                    dashboardIssues.push(c);
+                                                }
+                                            });
+                                        });
+
+                                        // 2. Charts Data
+                                        const priorityCounts = { High: 0, Medium: 0, Low: 0, Info: 0 };
+                                        const authorCounts = {};
+
+                                        dashboardIssues.forEach(c => {
+                                            const p = c.priority || 'Low';
+                                            if (priorityCounts[p] !== undefined) priorityCounts[p]++;
+                                            else priorityCounts['Info']++; // Fallback
+
+                                            const auth = c.author || 'Unknown';
+                                            authorCounts[auth] = (authorCounts[auth] || 0) + 1;
+                                        });
+
+                                        const pieData = Object.entries(priorityCounts)
+                                            .filter(([k, v]) => v > 0)
+                                            .map(([name, value]) => ({ name, value }));
+
+                                        const barData = Object.entries(authorCounts)
+                                            .map(([name, value]) => ({ name, value }));
+
+                                        const COLORS = { High: '#800020', Medium: '#f87171', Low: '#fbbf24', Info: '#facc15' };
+
+                                        return (
+                                            <>
+                                                {/* ANALYTICS CARD */}
+                                                <div className="bg-white border rounded p-3 shadow-sm">
+                                                    <h4 className="text-xs font-bold text-zinc-700 mb-2 uppercase flex items-center gap-2">
+                                                        <LayoutDashboard className="w-3 h-3" /> Analytics
+                                                    </h4>
+
+                                                    {dashboardIssues.length === 0 ? (
+                                                        <div className="text-center py-4 text-xs text-zinc-400 italic">No issues found in this model.</div>
+                                                    ) : (
+                                                        <div className="space-y-4">
+                                                            {/* PIE CHART */}
+                                                            <div className="h-32 w-full relative">
+                                                                <h5 className="text-[10px] text-zinc-400 text-center mb-1">By Priority</h5>
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <PieChart>
+                                                                        <Pie
+                                                                            data={pieData}
+                                                                            cx="50%" cy="50%"
+                                                                            innerRadius={25} outerRadius={40}
+                                                                            paddingAngle={5}
+                                                                            dataKey="value"
+                                                                        >
+                                                                            {pieData.map((entry, index) => (
+                                                                                <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#ccc'} />
+                                                                            ))}
+                                                                        </Pie>
+                                                                        <RechartsTooltip contentStyle={{ fontSize: '10px' }} />
+                                                                    </PieChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+
+                                                            {/* BAR CHART */}
+                                                            <div className="h-32 w-full">
+                                                                <h5 className="text-[10px] text-zinc-400 text-center mb-1">By Author</h5>
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <BarChart data={barData}>
+                                                                        <XAxis dataKey="name" fontSize={10} tick={false} />
+                                                                        <RechartsTooltip contentStyle={{ fontSize: '10px' }} />
+                                                                        <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                                                    </BarChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* ISSUE LIST */}
+                                                <div>
+                                                    <h4 className="text-xs font-bold text-zinc-700 mb-2 uppercase flex items-center gap-2">
+                                                        <Flag className="w-3 h-3" /> Issues ({dashboardIssues.length})
+                                                    </h4>
+                                                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                                                        {dashboardIssues.map(issue => {
+                                                            const pColor = COLORS[issue.priority] || COLORS.Low;
+                                                            return (
+                                                                <div
+                                                                    key={issue.id}
+                                                                    onClick={() => flyToComment(issue.id)}
+                                                                    className="bg-white border text-xs p-2 rounded shadow-sm hover:ring-1 hover:ring-indigo-300 cursor-pointer transition-all relative overflow-hidden group"
+                                                                >
+                                                                    {/* Color Stripe */}
+                                                                    <div
+                                                                        className="absolute left-0 top-0 bottom-0 w-1"
+                                                                        style={{ backgroundColor: pColor }}
+                                                                    />
+
+                                                                    <div className="pl-3">
+                                                                        <div className="flex justify-between items-center mb-1">
+                                                                            <span className="font-bold text-zinc-700 truncate">{issue.author}</span>
+                                                                            <span className="text-[9px] text-zinc-400">{new Date(issue.date).toLocaleDateString()}</span>
+                                                                        </div>
+                                                                        <div className="text-zinc-600 line-clamp-2">{issue.text}</div>
+                                                                        <div className="mt-1 flex gap-2 items-center">
+                                                                            <span
+                                                                                className="text-[9px] px-1.5 py-0.5 rounded text-white font-bold uppercase tracking-wider"
+                                                                                style={{ backgroundColor: pColor }}
+                                                                            >
+                                                                                {issue.priority || 'Low'}
+                                                                            </span>
+                                                                            {issue.position && <span className="text-[9px] text-indigo-500 font-mono flex items-center gap-0.5"><Flag className="w-2 h-2" /> Pinned</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()
+                                )}
+                            </div>
                         )}
 
                         {/* HISTORY TAB */}

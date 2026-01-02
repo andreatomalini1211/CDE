@@ -196,7 +196,8 @@ export const useStore = create((set, get) => ({
                                 text: topic.comment,
                                 author: topic.author,
                                 date: topic.creation_date,
-                                position: topic.markup?.pinpoint || null
+                                position: topic.markup?.pinpoint || null,
+                                priority: topic.priority || 'Low'
                             });
                         });
                     }
@@ -539,7 +540,7 @@ export const useStore = create((set, get) => ({
 
     toggleIsolateMode: () => set(state => ({ isolateCommentsMode: !state.isolateCommentsMode })),
 
-    addComment: (guid, text, position = null) => {
+    addComment: (guid, text, position = null, priority = 'Low') => {
         const state = get();
         const getScreenshot = state.screenshotGetter;
         let snapshot = null;
@@ -553,7 +554,8 @@ export const useStore = create((set, get) => ({
             date: new Date().toISOString(),
             id: Math.random().toString(36).substr(2, 9),
             snapshot,
-            position: position // {x, y, z} if pinned
+            position: position, // {x, y, z} if pinned
+            priority // High, Medium, Low, Info
         };
         const existingThread = state.comments[guid] || [];
         set({ comments: { ...state.comments, [guid]: [...existingThread, newComment] } });
@@ -567,6 +569,34 @@ export const useStore = create((set, get) => ({
         else newComments[guid] = updatedThread;
         return { comments: newComments };
     }),
+
+    flyToComment: (commentId) => {
+        const { comments } = get();
+        // Search all threads
+        for (const guid in comments) {
+            const thread = comments[guid];
+            const found = thread.find(c => c.id === commentId);
+            if (found && found.position) {
+                // Trigger Camera Fly To
+                set({
+                    cameraViewRequest: {
+                        view: 'FLY_TO',
+                        target: found.position,
+                        cameraPosition: {
+                            x: found.position.x + 10,
+                            y: found.position.y + 10,
+                            z: found.position.z + 10
+                        }
+                    },
+                    // Also select the element ensuring properties tab shows it
+                    // selectedElement... requires knowing the element object or modelId. 
+                    // We can find it if needed, or just fly there.
+                    // For now, let's just fly.
+                });
+                return;
+            }
+        }
+    },
 
     uploadFileCorrect: async () => {
         const { token, repo, loadedModels, selectedModelId, comments } = get();
@@ -594,7 +624,7 @@ export const useStore = create((set, get) => ({
             topics: modelComments.map(c => ({
                 guid: c.id, // The comment ID becomes the Topic GUID
                 title: "Issue",
-                priority: "Normal",
+                priority: c.priority || "Normal",
                 index: 0,
                 creation_date: c.date,
                 author: c.author,
