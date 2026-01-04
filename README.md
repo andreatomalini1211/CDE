@@ -148,3 +148,8 @@ Developed by **Andrea Tomalini**.
 * **ResearchGate:** [Profile](https://www.researchgate.net/profile/Andrea-Tomalini?ev=hdr_xprf)
 * **Instagram:** [@andrea_tomalini](https://www.instagram.com/andrea_tomalini/)
 * **Email:** [andreatomalini@gmail.com](mailto:andreatomalini@gmail.com)
+
+## ☕ Support the Project
+
+If you found this research interesting or useful for your own work, consider supporting the development (or just keeping me caffeinated while coding ⚡).
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/andrea1211)
