@@ -152,4 +152,5 @@ Developed by **Andrea Tomalini**.
 ## ☕ Support the Project
 
 If you found this research interesting or useful for your own work, consider supporting the development (or just keeping me caffeinated while coding ⚡).
+
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/andrea1211)
