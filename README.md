@@ -35,7 +35,7 @@ To ensure accessibility and performance, this CDE features a transparent, dual-e
 * **⚡ The "Fast Lane" (dotBIM):** Optimized for web performance. JSON-based geometry is parsed natively by the browser without overhead.
 * **🏗️ The "Compatibility Lane" (IFC):** Powered by a WASM (WebAssembly) backend. This allows the application to ingest industry-standard IFC files directly, "transpiling" complex parametric geometry into renderable meshes on the fly.
 
-## ✨ New in V4: Advanced CDE Features
+## ✨ Advanced CDE Features
 
 This version introduces logic to transform the viewer into a collaborative management platform.
 
