@@ -80,6 +80,7 @@ function PinMarkers() {
                             case 'High': color = '#800020'; break; // Bordeaux
                             case 'Medium': color = '#FF0000'; break; // Red
                             case 'Low': color = '#FFA500'; break; // Orange
+                            case 'Info': color = '#FFFF00'; break; // Yellow
                             default: break;
                         }
                         pins.push({ id: c.id, pos: c.position, color });

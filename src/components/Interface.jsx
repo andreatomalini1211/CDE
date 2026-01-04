@@ -14,7 +14,7 @@ import {
     MessageSquare, Trash2, Eye, EyeOff, Loader2, Lightbulb, LightbulbOff, Maximize,
     History, RotateCcw, AlertTriangle, Send, Search, FileText, Download,
     Palette, ChevronDown, ChevronRight, LogOut, CheckSquare,
-    ArrowDown, ArrowLeft, ArrowRight, LayoutDashboard, Flag
+    ArrowDown, ArrowLeft, ArrowRight, LayoutDashboard, Flag, GitBranch, Rocket
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { clsx } from 'clsx';
@@ -46,8 +46,10 @@ export default function Interface() {
         searchQuery, setSearchQuery, downloadBCFZip, uploadFileCorrect,
         showAllElements, isolateCommentedElements,
         availableDisciplines,
+        branches, fetchBranches,
         pendingPin, setPendingPin,
-        flyToComment
+        flyToComment,
+        switchBranch, createPromotionRequest
     } = useStore();
 
     const [inputToken, setInputToken] = useState(token);
@@ -73,6 +75,13 @@ export default function Interface() {
             fetchUser();
         }
     }, [token]);
+
+    // Fetch Branches when entering a repo
+    useEffect(() => {
+        if (repo?.name && repo?.owner) {
+            fetchBranches();
+        }
+    }, [repo.name, repo.owner]);
 
     // Scroll Chat
     useEffect(() => {
@@ -269,6 +278,41 @@ export default function Interface() {
                     {/* FILE BROWSER */}
                     {viewMode === 'FILE_BROWSER' && (
                         <div className="flex flex-col h-full">
+                            {/* ISO 19650 WORKFLOW PANEL */}
+                            <div className="bg-indigo-50 p-3 border-b border-indigo-100 flex-shrink-0">
+                                <div className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                    <span className="flex items-center gap-1"><GitBranch className="w-3 h-3" /> ISO 19650 Workflow</span>
+                                    <span className={cn("px-1.5 py-0.5 rounded text-[9px] border font-bold",
+                                        repo.branch.startsWith('wip') ? "bg-amber-100 text-amber-700 border-amber-200" :
+                                            repo.branch === 'shared' ? "bg-blue-100 text-blue-700 border-blue-200" :
+                                                "bg-green-100 text-green-700 border-green-200"
+                                    )}>
+                                        {repo.branch.startsWith('wip') ? 'WIP' : repo.branch === 'shared' ? 'SHARED' : 'PUBLISHED'}
+                                    </span>
+                                </div>
+
+                                <select
+                                    value={repo.branch}
+                                    onChange={(e) => switchBranch(e.target.value)}
+                                    className="w-full text-xs p-1.5 rounded border border-indigo-200 bg-white mb-2 outline-none focus:ring-1 focus:ring-indigo-400"
+                                >
+                                    {branches.length === 0 && <option value="main">Loading...</option>}
+                                    {branches.map(b => (
+                                        <option key={b} value={b}>
+                                            {b} {b === 'main' ? '(Published)' : b === 'shared' ? '(Verified)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                {repo.branch !== 'main' && (
+                                    <button
+                                        onClick={createPromotionRequest}
+                                        className="w-full flex items-center justify-center gap-1 bg-indigo-600 text-white py-1.5 rounded text-xs font-bold hover:bg-indigo-700 shadow-sm transition-all"
+                                    >
+                                        <Rocket className="w-3 h-3" /> Promote to {repo.branch.startsWith('wip') ? 'Shared' : 'Main'}
+                                    </button>
+                                )}
+                            </div>
                             {/* Path Header */}
                             <div className="p-2 border-b bg-zinc-50 flex items-center gap-1 flex-shrink-0">
                                 <button onClick={exitRepo} className="p-1.5 hover:bg-white rounded border border-transparent hover:border-zinc-200"><Database className="w-4 h-4 text-zinc-500" /></button>
@@ -599,7 +643,7 @@ export default function Interface() {
                                         const barData = Object.entries(authorCounts)
                                             .map(([name, value]) => ({ name, value }));
 
-                                        const COLORS = { High: '#800020', Medium: '#f87171', Low: '#fbbf24', Info: '#facc15' };
+                                        const COLORS = { High: '#800020', Medium: '#FF0000', Low: '#FFA500', Info: '#FFFF00' };
 
                                         return (
                                             <>

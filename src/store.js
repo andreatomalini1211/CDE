@@ -32,6 +32,7 @@ export const useStore = create((set, get) => ({
     viewMode: 'REPO_LIST',
     currentPath: '',
     repo: { owner: '', name: '', branch: 'main' },
+    branches: [],
     repos: [],
     navItems: [],
 
@@ -162,6 +163,7 @@ export const useStore = create((set, get) => ({
                         owner: repo.owner,
                         repo: repo.name,
                         path: sidecarPath,
+                        ref: repo.branch, // Branch Support
                         headers: { 'If-None-Match': '' },
                         t: Date.now()
                     });
@@ -437,16 +439,81 @@ export const useStore = create((set, get) => ({
         } catch (e) { console.error(e); }
     },
 
+    fetchBranches: async () => {
+        const { token, repo } = get();
+        if (!token || !repo.owner || !repo.name) return;
+        const octokit = new Octokit({ auth: token });
+        try {
+            const { data } = await octokit.rest.repos.listBranches({
+                owner: repo.owner,
+                repo: repo.name,
+                per_page: 100
+            });
+            const names = data.map(b => b.name);
+            set({ branches: names });
+
+            // Optional: Validate current branch still exists, else fallback to main
+            if (!names.includes(repo.branch) && names.includes('main')) {
+                set(state => ({ repo: { ...state.repo, branch: 'main' } }));
+            }
+        } catch (e) { console.error("Failed to fetch branches", e); }
+    },
+
     enterRepo: async (owner, name) => {
         set({ repo: { owner, name, branch: 'main' }, viewMode: 'FILE_BROWSER', currentPath: '' });
         await get().navigatePath('');
+    },
+
+    switchBranch: async (branchName) => {
+        set(state => ({ repo: { ...state.repo, branch: branchName }, viewMode: 'FILE_BROWSER', currentPath: '' }));
+        await get().navigatePath('');
+    },
+
+    createPromotionRequest: async () => {
+        const { token, repo } = get();
+        if (!token || !repo.name) return;
+
+        const currentBranch = repo.branch;
+        let targetBranch = null;
+
+        if (currentBranch.startsWith('wip-')) {
+            targetBranch = 'shared';
+        } else if (currentBranch === 'shared') {
+            targetBranch = 'main';
+        } else {
+            alert(`You are on '${currentBranch}'. No promotion target defined (ISO 19650: WIP->Shared->Main).`);
+            return;
+        }
+
+        const octokit = new Octokit({ auth: token });
+        try {
+            const { data } = await octokit.rest.pulls.create({
+                owner: repo.owner,
+                repo: repo.name,
+                head: currentBranch,
+                base: targetBranch,
+                title: `Promote ${currentBranch} to ${targetBranch}`,
+                body: `Automated promotion request triggered from React BIM CDE.`
+            });
+            const url = data.html_url;
+            if (confirm(`Pull Request Created! View it now?\n${url}`)) {
+                window.open(url, '_blank');
+            }
+        } catch (e) {
+            console.error(e);
+            if (e.status === 422) {
+                alert("A Pull Request already exists for this branch.");
+            } else {
+                alert("Failed to create PR: " + e.message);
+            }
+        }
     },
 
     navigatePath: async (path) => {
         const { token, repo } = get();
         const octokit = new Octokit({ auth: token });
         try {
-            const { data } = await octokit.repos.getContent({ owner: repo.owner, repo: repo.name, path: path });
+            const { data } = await octokit.repos.getContent({ owner: repo.owner, repo: repo.name, path: path, ref: repo.branch });
             const items = Array.isArray(data) ? data : [data];
             const filtered = items.map(item => ({
                 name: item.name,
@@ -658,6 +725,7 @@ export const useStore = create((set, get) => ({
                     headers: {
                         'If-None-Match': '' // Forces fresh fetch from GitHub
                     },
+                    ref: repo.branch, // Branch Support
                     t: Date.now() // Cache buster param
                 });
 
@@ -684,6 +752,7 @@ export const useStore = create((set, get) => ({
                 message: `Update Sidecar: ${activeModel.fileName}`,
                 content,
                 sha: currentSha, // Undefined = Create, Value = Update
+                branch: repo.branch // Branch Support
             });
 
             // Optionally update the loaded model's knowledge of the sidecar (though we fetch fresh next time)
